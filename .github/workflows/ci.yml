@@ -1,0 +1,66 @@
+# Los tests cubren el nucleo: aislamiento multi-tenant en lectura y escritura,
+# reglas de plan, calculo de vencimientos, solapamiento de citas y el manejador
+# global de excepciones. Sin CI solo corren cuando alguien se acuerda.
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  agenda-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: cuadre_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      CUADRE_TEST_POSTGRES: Host=127.0.0.1;Port=5432;Database=cuadre_test_template;Username=postgres;Password=cuadre_test;Pooling=false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Concurrencia con PostgreSQL real
+        run: dotnet test BarberShop.Tests/BarberShop.Tests.csproj --filter FullyQualifiedName~AgendaPostgresTests --verbosity normal
+
+  verificar:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          # Fijado: el repo no tiene global.json, asi que sin esto CI usaria el
+          # SDK por defecto del runner, que puede no ser net10.0.
+          dotnet-version: '10.0.x'
+
+      - name: Restaurar
+        run: dotnet restore
+
+      # UseAppHost=false evita generar el .exe. Hace falta en local cuando la API
+      # esta corriendo (el fichero queda bloqueado) y aqui no estorba.
+      - name: Compilar
+        run: dotnet build --no-restore -p:UseAppHost=false
+
+      - name: Tests
+        run: dotnet test BarberShop.Tests/BarberShop.Tests.csproj --no-build -p:UseAppHost=false --verbosity normal
+
+      # Informativo por ahora. Hay 20 avisos, todos de la familia "null en tiempo
+      # de ejecucion" (CS8618, CS8601, CS8603) mas los CS0168 de los catch que no
+      # usan la excepcion. Cuando esten a cero, esto pasa a -warnaserror.
+      - name: Avisos del compilador
+        run: |
+          dotnet build --no-restore -p:UseAppHost=false 2>&1 \
+            | grep -oE "warning CS[0-9]+" | sort | uniq -c | sort -rn || true

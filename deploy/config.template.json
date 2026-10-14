@@ -1,0 +1,7 @@
+{
+  "host": "TU_IP_DEL_SERVIDOR",
+  "user": "root",
+  "password": "PON_LA_PASSWORD_AQUI",
+  "key_file": null,
+  "public_api_url": "https://cuadreapp.duckdns.org/api"
+}
